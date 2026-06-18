@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stock Sim AI · Phase 1 Paper Trading Demo</title>
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <span class="product-mark">Stock Sim AI</span>
+        <h1>Paper Trading 工作台</h1>
+      </div>
+      <div class="top-actions">
+        <span class="disclosure">虚拟资金 · 模拟成交 · 非投资建议</span>
+        <button id="csvExport" type="button" title="Export orders as CSV">CSV</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>证券搜索</h2>
+            <span>US stocks / ETF</span>
+          </div>
+          <label class="search">
+            <span>⌕</span>
+            <input id="symbolSearch" type="search" placeholder="Search symbol, name, sector">
+          </label>
+          <div class="table-shell compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Price</th>
+                  <th>Chg</th>
+                  <th>Vol</th>
+                  <th>Cap</th>
+                  <th>Sector</th>
+                </tr>
+              </thead>
+              <tbody id="instrumentTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>自选股</h2>
+            <span>多列表</span>
+          </div>
+          <div id="watchlists" class="watchlists"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>价格提醒</h2>
+            <span>站内 / 邮件</span>
+          </div>
+          <ul id="alerts" class="alerts"></ul>
+        </section>
+      </aside>
+
+      <section class="main-grid">
+        <div class="hero-row">
+          <section id="quoteCard" class="quote-card"></section>
+          <section id="chart" class="chart-card"></section>
+        </div>
+
+        <section class="panel order-panel">
+          <div class="panel-head">
+            <h2>模拟下单</h2>
+            <span>服务端状态机 demo</span>
+          </div>
+          <form id="orderForm" class="order-form">
+            <label>
+              <span>Symbol</span>
+              <input name="symbol" required autocomplete="off">
+            </label>
+            <label>
+              <span>Side</span>
+              <select name="side">
+                <option value="BUY">Buy</option>
+                <option value="SELL">Sell</option>
+              </select>
+            </label>
+            <label>
+              <span>Qty</span>
+              <input name="quantity" type="number" min="1" step="1" value="10" required>
+            </label>
+            <label>
+              <span>Type</span>
+              <select name="orderType">
+                <option value="MARKET">Market</option>
+                <option value="LIMIT">Limit</option>
+                <option value="STOP">Stop</option>
+              </select>
+            </label>
+            <label>
+              <span>Limit</span>
+              <input name="limitPrice" type="number" min="0" step="0.01" placeholder="Optional">
+            </label>
+            <label>
+              <span>Stop</span>
+              <input name="stopPrice" type="number" min="0" step="0.01" placeholder="Optional">
+            </label>
+            <label>
+              <span>TIF</span>
+              <select name="timeInForce">
+                <option value="DAY">DAY</option>
+                <option value="GTC">GTC</option>
+              </select>
+            </label>
+            <label>
+              <span>Idempotency</span>
+              <input name="idempotencyKey" placeholder="Optional request key">
+            </label>
+            <label class="wide">
+              <span>交易理由</span>
+              <textarea name="thesis" rows="3" placeholder="Why this trade, risk plan, invalidation..."></textarea>
+            </label>
+            <label>
+              <span>Plan</span>
+              <input name="plan" placeholder="5-10 trading days">
+            </label>
+            <label>
+              <span>Stop loss</span>
+              <input name="stopLoss" placeholder="e.g. -4%">
+            </label>
+            <label>
+              <span>Target</span>
+              <input name="target" placeholder="e.g. +8%">
+            </label>
+            <label>
+              <span>Tag</span>
+              <input name="tag" placeholder="Breakout">
+            </label>
+            <button class="primary-action" type="submit" title="Submit paper order">Submit Order</button>
+            <p id="orderMessage" class="message" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>组合与绩效</h2>
+            <span>现金 / 持仓 / 风险</span>
+          </div>
+          <div id="portfolioStats" class="stats"></div>
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Qty</th>
+                  <th>Cost</th>
+                  <th>Last</th>
+                  <th>Value</th>
+                  <th>Unrealized P/L</th>
+                </tr>
+              </thead>
+              <tbody id="positions"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="split-panels">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>订单</h2>
+              <span>NEW → FILLED</span>
+            </div>
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Side</th>
+                    <th>Type</th>
+                    <th>Fill</th>
+                    <th>Status</th>
+                    <th>Info</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="orders"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>成交明细</h2>
+              <span>模型版本可追溯</span>
+            </div>
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Execution</th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Fees</th>
+                    <th>Model</th>
+                  </tr>
+                </thead>
+                <tbody id="executions"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="split-panels">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>交易日志</h2>
+              <span>复盘输入</span>
+            </div>
+            <div id="theses" class="journal"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>管理审计</h2>
+              <span>账户与订单事件</span>
+            </div>
+            <ul id="auditLog" class="audit-log"></ul>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
