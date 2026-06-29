@@ -114,6 +114,20 @@ export function getInstrument(symbol) {
   return instruments.find((item) => item.symbol === symbol);
 }
 
+export function applyInstrumentQuote(quote) {
+  const instrument = getInstrument(quote.symbol);
+  if (!instrument) return false;
+  instrument.price = quote.price;
+  instrument.changePct = quote.changePct;
+  instrument.volume = quote.volume;
+  instrument.marketCap = quote.marketCap;
+  instrument.pe = quote.pe;
+  instrument.source = quote.source;
+  instrument.updatedAt = quote.eventTime || quote.receivedTime;
+  instrument.isRealtime = quote.isRealtime;
+  return true;
+}
+
 export function marketValue(position) {
   const instrument = getInstrument(position.symbol);
   return instrument ? position.qty * instrument.price : 0;

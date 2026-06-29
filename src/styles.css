@@ -222,11 +222,13 @@ h2 {
   display: grid;
   align-content: start;
   gap: 18px;
+  min-width: 0;
 }
 
 .panel,
 .quote-card,
 .chart-card {
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -387,6 +389,7 @@ tbody tr.selected {
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.2fr);
   gap: 18px;
+  min-width: 0;
 }
 
 .quote-card {
@@ -438,6 +441,36 @@ tbody tr.selected {
 .chart-card {
   min-height: 320px;
   padding: 18px;
+}
+
+.timeframe-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.timeframe-tabs button {
+  min-width: 42px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.timeframe-tabs button.active {
+  border-color: var(--accent);
+  background: #edf7f3;
+  color: var(--accent-strong);
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 250px;
+  margin-top: 16px;
 }
 
 .chart-card svg {
@@ -526,7 +559,7 @@ tbody tr.selected {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
   margin: 14px 0;
 }

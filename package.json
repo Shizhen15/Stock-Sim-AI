@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node tests/simulator.test.mjs && node tests/account-api.test.mjs"
+    "test": "node tests/simulator.test.mjs && node tests/account-api.test.mjs && node tests/market-data.test.mjs"
   }
 }

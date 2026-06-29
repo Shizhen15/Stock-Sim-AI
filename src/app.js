@@ -1,6 +1,5 @@
 import {
   calculatePortfolio,
-  demoBars,
   getInstrument,
   instruments,
   marketValue
@@ -9,7 +8,11 @@ import {
 let state = null;
 let selectedSymbol = "AAPL";
 let authMode = "login";
-let currentUser = readStoredUser();
+let currentUser = null;
+let selectedTimeframe = "1D";
+let marketBars = [];
+let marketSource = null;
+let chartRequestId = 0;
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -117,12 +120,14 @@ function renderWatchlists() {
 
 function renderChart() {
   const instrument = getInstrument(selectedSymbol);
-  const min = Math.min(...demoBars);
-  const max = Math.max(...demoBars);
-  const points = demoBars
-    .map((value, index) => {
-      const x = (index / (demoBars.length - 1)) * 100;
-      const y = 94 - ((value - min) / (max - min)) * 82;
+  const bars = marketBars.length ? marketBars : buildFallbackBars(instrument);
+  const closes = bars.map((bar) => bar.close);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const points = bars
+    .map((bar, index) => {
+      const x = (index / (bars.length - 1)) * 100;
+      const y = 94 - ((bar.close - min) / (max - min || 1)) * 82;
       return `${x},${y}`;
     })
     .join(" ");
@@ -130,12 +135,17 @@ function renderChart() {
   elements.chart.innerHTML = `
     <div class="chart-head">
       <div>
-        <strong>${selectedSymbol} demo price path</strong>
-        <span>1D view · data source: ${instrument.source}</span>
+        <strong>${selectedSymbol} price chart</strong>
+        <span>${selectedTimeframe} view · ${marketSource?.source || instrument.source}</span>
       </div>
-      <span>Last updated ${instrument.updatedAt}</span>
+      <div class="timeframe-tabs" role="tablist" aria-label="Chart timeframe">
+        ${["15m", "1H", "1D"].map((timeframe) => `
+          <button type="button" class="${timeframe === selectedTimeframe ? "active" : ""}" data-timeframe="${timeframe}">${timeframe}</button>
+        `).join("")}
+      </div>
     </div>
-    <svg viewBox="0 0 100 100" role="img" aria-label="${selectedSymbol} chart">
+    <div id="tradingViewChart" class="chart-canvas"></div>
+    <svg class="fallback-chart" viewBox="0 0 100 100" role="img" aria-label="${selectedSymbol} chart">
       <defs>
         <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="#1f8f70" stop-opacity="0.24"></stop>
@@ -148,7 +158,13 @@ function renderChart() {
       <polygon class="area" points="0,100 ${points} 100,100"></polygon>
       <polyline class="line" points="${points}"></polyline>
     </svg>
+    <p class="data-note">${marketSource?.source || instrument.source}. Last updated ${formatMarketTime(marketSource?.lastUpdated || instrument.updatedAt)}.</p>
   `;
+
+  renderTradingViewChart(bars);
+  if (marketSource?.symbol !== selectedSymbol || marketSource?.timeframe !== selectedTimeframe) {
+    void loadBars(selectedSymbol, selectedTimeframe);
+  }
 }
 
 function renderQuoteCard() {
@@ -167,7 +183,7 @@ function renderQuoteCard() {
       <div><dt>P/E</dt><dd>${instrument.pe}</dd></div>
       <div><dt>Status</dt><dd>Regular session</dd></div>
     </dl>
-    <p class="data-note">${instrument.source}. Demo quotes are delayed and are not investment advice.</p>
+    <p class="data-note">${instrument.source}. Last updated ${formatMarketTime(instrument.updatedAt)}. Demo quotes are delayed unless Alpaca is configured; this is not investment advice.</p>
   `;
 
   elements.orderForm.symbol.value = selectedSymbol;
@@ -275,52 +291,153 @@ async function requestJson(path, options = {}) {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(currentUser ? { "X-User-Id": currentUser.id } : {}),
       ...(options.headers || {})
     }
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.message || "Request failed.");
+  if (!response.ok) {
+    if (response.status === 401 && path !== "/api/sessions") {
+      clearSession("Your session expired. Please log in again.");
+    }
+    throw new Error(payload.message || "Request failed.");
+  }
   return payload;
+}
+
+async function refreshInstruments() {
+  const payload = await requestJson("/api/market-data/instruments");
+  instruments.splice(0, instruments.length, ...payload.instruments);
+}
+
+async function refreshQuote(symbol) {
+  const payload = await requestJson(`/api/market-data/quote?symbol=${encodeURIComponent(symbol)}`);
+  syncInstrumentQuote(payload.quote);
+  return payload.quote;
+}
+
+async function loadBars(symbol, timeframe) {
+  const requestId = ++chartRequestId;
+  try {
+    const payload = await requestJson(`/api/market-data/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
+    if (requestId !== chartRequestId || symbol !== selectedSymbol || timeframe !== selectedTimeframe) return;
+    marketBars = payload.bars;
+    marketSource = payload;
+    renderChart();
+  } catch {
+    if (requestId === chartRequestId) {
+      marketBars = [];
+      marketSource = null;
+    }
+  }
+}
+
+function syncInstrumentQuote(quote) {
+  const instrument = getInstrument(quote.symbol);
+  if (!instrument) return;
+  instrument.price = quote.price;
+  instrument.changePct = quote.changePct;
+  instrument.volume = quote.volume;
+  instrument.marketCap = quote.marketCap;
+  instrument.pe = quote.pe;
+  instrument.source = quote.source;
+  instrument.updatedAt = quote.eventTime || quote.receivedTime;
+}
+
+function buildFallbackBars(instrument) {
+  const prices = [
+    189, 194, 191, 198, 203, 201, 207, 211, 209, 214, 218, 215,
+    221, 224, 219, 226, 232, 228, 235, 241, 238, 244, 249, 246
+  ];
+  return prices.map((value, index) => ({
+    time: String(index),
+    open: value,
+    high: value * 1.006,
+    low: value * 0.994,
+    close: instrument.price * (value / prices.at(-1))
+  }));
+}
+
+function renderTradingViewChart(bars) {
+  const container = document.querySelector("#tradingViewChart");
+  const fallback = elements.chart.querySelector(".fallback-chart");
+  if (!container || !window.LightweightCharts?.createChart) {
+    if (fallback) fallback.hidden = false;
+    return;
+  }
+
+  fallback.hidden = true;
+  const chart = window.LightweightCharts.createChart(container, {
+    height: 250,
+    layout: {
+      background: { color: "#ffffff" },
+      textColor: "#64706b"
+    },
+    grid: {
+      vertLines: { color: "#eef3f0" },
+      horzLines: { color: "#eef3f0" }
+    },
+    rightPriceScale: { borderColor: "#dce3df" },
+    timeScale: {
+      borderColor: "#dce3df",
+      timeVisible: selectedTimeframe !== "1D"
+    }
+  });
+  const series = chart.addCandlestickSeries({
+    upColor: "#1f8f70",
+    downColor: "#b73b4b",
+    borderVisible: false,
+    wickUpColor: "#1f8f70",
+    wickDownColor: "#b73b4b"
+  });
+  series.setData(bars.map((bar) => ({
+    time: toChartTime(bar.time),
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close
+  })));
+  chart.timeScale().fitContent();
+}
+
+function toChartTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  if (selectedTimeframe === "1D") return date.toISOString().slice(0, 10);
+  return Math.floor(date.getTime() / 1000);
+}
+
+function formatMarketTime(value) {
+  if (!value) return "unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 function setSession(user, tradingState) {
   currentUser = user;
   state = tradingState;
-  localStorage.setItem("stockSimUser", JSON.stringify(user));
   elements.authMessage.textContent = "";
   elements.orderMessage.textContent = "";
   render();
 }
 
-function clearSession() {
+function clearSession(message = "") {
   currentUser = null;
   state = null;
   authMode = "login";
   elements.authForm.reset();
-  elements.authMessage.textContent = "";
-  elements.authMessage.className = "message";
-  localStorage.removeItem("stockSimUser");
+  elements.authMessage.textContent = message;
+  elements.authMessage.className = message ? "message error" : "message";
   render();
 }
 
-function readStoredUser() {
-  try {
-    return JSON.parse(localStorage.getItem("stockSimUser"));
-  } catch {
-    return null;
-  }
-}
-
 async function bootstrapSession() {
-  if (!currentUser) {
-    render();
-    return;
-  }
-
   try {
+    await refreshInstruments();
     const payload = await requestJson("/api/trading-state");
     setSession(payload.user, payload.tradingState);
+    await refreshQuote(selectedSymbol);
+    await loadBars(selectedSymbol, selectedTimeframe);
   } catch {
     clearSession();
   }
@@ -360,6 +477,8 @@ elements.authForm.addEventListener("submit", async (event) => {
     elements.authMessage.className = "message success";
     await delay(500);
     setSession(payload.user, payload.tradingState);
+    await refreshQuote(selectedSymbol);
+    await loadBars(selectedSymbol, selectedTimeframe);
   } catch (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.className = "message error";
@@ -378,16 +497,33 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-elements.logoutButton.addEventListener("click", clearSession);
+elements.logoutButton.addEventListener("click", async () => {
+  try {
+    await requestJson("/api/sessions", { method: "DELETE", body: "{}" });
+  } finally {
+    clearSession();
+  }
+});
 elements.symbolSearch.addEventListener("input", renderInstruments);
 
 document.addEventListener("click", async (event) => {
   const symbolButton = event.target.closest("[data-symbol]");
   const cancelButton = event.target.closest("[data-cancel]");
+  const timeframeButton = event.target.closest("[data-timeframe]");
 
   if (symbolButton) {
     selectedSymbol = symbolButton.dataset.symbol;
+    marketBars = [];
+    marketSource = null;
+    await refreshQuote(selectedSymbol);
     render();
+  }
+
+  if (timeframeButton) {
+    selectedTimeframe = timeframeButton.dataset.timeframe;
+    marketBars = [];
+    marketSource = null;
+    renderChart();
   }
 
   if (cancelButton && currentUser) {
@@ -440,6 +576,10 @@ elements.csvExport.addEventListener("click", () => {
   link.download = `${currentUser.username}-paper-trading-orders.csv`;
   link.click();
   URL.revokeObjectURL(url);
+});
+
+window.addEventListener("load", () => {
+  if (state) renderChart();
 });
 
 bootstrapSession();
