@@ -96,6 +96,20 @@ export function createInitialState() {
   };
 }
 
+export function serializeState(state) {
+  return {
+    ...state,
+    idempotencyKeys: [...state.idempotencyKeys]
+  };
+}
+
+export function hydrateState(savedState) {
+  return {
+    ...savedState,
+    idempotencyKeys: new Set(savedState.idempotencyKeys || [])
+  };
+}
+
 export function getInstrument(symbol) {
   return instruments.find((item) => item.symbol === symbol);
 }

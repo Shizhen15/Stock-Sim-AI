@@ -7,12 +7,40 @@
     <link rel="stylesheet" href="./src/styles.css">
   </head>
   <body>
+    <section id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-copy">
+          <span class="product-mark">Stock Sim AI</span>
+          <h1>账号登录</h1>
+          <p>登录已有用户，或创建新用户。每个用户会拥有独立保存的模拟资金、持仓、订单、成交和交易日志。</p>
+        </div>
+        <div class="auth-tabs" role="tablist" aria-label="Account options">
+          <button id="loginTab" class="active" type="button">登录用户</button>
+          <button id="signupTab" type="button">创建新用户</button>
+        </div>
+        <form id="authForm" class="auth-form">
+          <label>
+            <span>Username</span>
+            <input name="username" autocomplete="username" required>
+          </label>
+          <label>
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" minlength="6" required>
+          </label>
+          <button id="authSubmit" class="primary-action" type="submit">登录用户</button>
+          <p id="authMessage" class="message" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
     <header class="topbar">
       <div>
         <span class="product-mark">Stock Sim AI</span>
         <h1>Paper Trading 工作台</h1>
       </div>
       <div class="top-actions">
+        <span id="currentUser" class="user-pill">未登录</span>
+        <button id="logoutButton" type="button" title="Log out">Logout</button>
         <span class="disclosure">虚拟资金 · 模拟成交 · 非投资建议</span>
         <button id="csvExport" type="button" title="Export orders as CSV">CSV</button>
       </div>
