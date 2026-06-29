@@ -1,19 +1,29 @@
 import {
   calculatePortfolio,
-  cancelOrder,
-  createInitialState,
   demoBars,
   getInstrument,
   instruments,
-  marketValue,
-  submitOrder
+  marketValue
 } from "./simulator.js";
 
-const state = createInitialState();
+let state = null;
+let selectedSymbol = "AAPL";
+let authMode = "login";
+let currentUser = readStoredUser();
+
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-// 页面上会频繁读写这些 DOM 节点，集中保存可以避免在每个函数里重复查询。
 const elements = {
+  authScreen: document.querySelector("#authScreen"),
+  loginTab: document.querySelector("#loginTab"),
+  signupTab: document.querySelector("#signupTab"),
+  authForm: document.querySelector("#authForm"),
+  authSubmit: document.querySelector("#authSubmit"),
+  authMessage: document.querySelector("#authMessage"),
+  passwordInput: document.querySelector("input[name='password']"),
+  passwordHint: document.querySelector("#passwordHint"),
+  currentUser: document.querySelector("#currentUser"),
+  logoutButton: document.querySelector("#logoutButton"),
   symbolSearch: document.querySelector("#symbolSearch"),
   instrumentTable: document.querySelector("#instrumentTable"),
   watchlists: document.querySelector("#watchlists"),
@@ -31,11 +41,9 @@ const elements = {
   csvExport: document.querySelector("#csvExport")
 };
 
-let selectedSymbol = "AAPL";
-
-// 总渲染函数：任何状态变化后都重新画一遍页面，适合这个轻量 demo。
-// 真实大型应用通常会用 React/Vue 等框架自动管理这些局部更新。
 function render() {
+  renderAuthState();
+  if (!state) return;
   renderInstruments();
   renderWatchlists();
   renderChart();
@@ -48,9 +56,32 @@ function render() {
   renderAuditLog();
 }
 
+function renderAuthState() {
+  elements.authScreen.hidden = Boolean(currentUser && state);
+  elements.currentUser.textContent = currentUser ? `用户：${currentUser.username}` : "未登录";
+  elements.loginTab.classList.toggle("active", authMode === "login");
+  elements.signupTab.classList.toggle("active", authMode === "signup");
+  elements.loginTab.setAttribute("aria-selected", String(authMode === "login"));
+  elements.signupTab.setAttribute("aria-selected", String(authMode === "signup"));
+  if (authMode === "signup") {
+    elements.passwordInput.autocomplete = "new-password";
+    elements.passwordInput.setAttribute("minlength", "8");
+    elements.passwordInput.setAttribute("maxlength", "20");
+    elements.passwordInput.setAttribute("pattern", "^(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,20}$");
+    elements.passwordInput.title = "密码需为 8-20 个字符，并包含至少一个大写字母、一个数字和一个特殊符号。";
+  } else {
+    elements.passwordInput.autocomplete = "current-password";
+    elements.passwordInput.removeAttribute("minlength");
+    elements.passwordInput.removeAttribute("maxlength");
+    elements.passwordInput.removeAttribute("pattern");
+    elements.passwordInput.removeAttribute("title");
+  }
+  elements.passwordHint.hidden = authMode !== "signup";
+  elements.authSubmit.textContent = authMode === "login" ? "登录用户" : "创建新用户";
+}
+
 function renderInstruments() {
   const query = elements.symbolSearch.value.trim().toLowerCase();
-  // 根据搜索框内容过滤证券列表，然后把结果拼成表格行。
   const rows = instruments
     .filter((item) => `${item.symbol} ${item.name} ${item.sector}`.toLowerCase().includes(query))
     .map((item) => `
@@ -88,7 +119,6 @@ function renderChart() {
   const instrument = getInstrument(selectedSymbol);
   const min = Math.min(...demoBars);
   const max = Math.max(...demoBars);
-  // 把价格数组转换成 SVG 折线坐标。x 是时间位置，y 是归一化后的价格高度。
   const points = demoBars
     .map((value, index) => {
       const x = (index / (demoBars.length - 1)) * 100;
@@ -145,7 +175,6 @@ function renderQuoteCard() {
 
 function renderPortfolio() {
   const portfolio = calculatePortfolio(state);
-  // 组合指标都来自 simulator 的计算结果，页面只负责展示，不直接改账户数据。
   elements.portfolioStats.innerHTML = `
     ${stat("Net equity", money.format(portfolio.equity), portfolio.cumulativeReturnPct)}
     ${stat("Cash", money.format(portfolio.cash))}
@@ -241,10 +270,118 @@ function stat(label, value, delta) {
   return `<article class="stat"><span>${label}</span><strong>${value}</strong>${deltaHtml}</article>`;
 }
 
+async function requestJson(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(currentUser ? { "X-User-Id": currentUser.id } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.message || "Request failed.");
+  return payload;
+}
+
+function setSession(user, tradingState) {
+  currentUser = user;
+  state = tradingState;
+  localStorage.setItem("stockSimUser", JSON.stringify(user));
+  elements.authMessage.textContent = "";
+  elements.orderMessage.textContent = "";
+  render();
+}
+
+function clearSession() {
+  currentUser = null;
+  state = null;
+  authMode = "login";
+  elements.authForm.reset();
+  elements.authMessage.textContent = "";
+  elements.authMessage.className = "message";
+  localStorage.removeItem("stockSimUser");
+  render();
+}
+
+function readStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("stockSimUser"));
+  } catch {
+    return null;
+  }
+}
+
+async function bootstrapSession() {
+  if (!currentUser) {
+    render();
+    return;
+  }
+
+  try {
+    const payload = await requestJson("/api/trading-state");
+    setSession(payload.user, payload.tradingState);
+  } catch {
+    clearSession();
+  }
+}
+
+elements.loginTab.addEventListener("click", () => {
+  authMode = "login";
+  elements.authMessage.textContent = "";
+  renderAuthState();
+});
+
+elements.signupTab.addEventListener("click", () => {
+  authMode = "signup";
+  elements.authMessage.textContent = "";
+  renderAuthState();
+});
+
+elements.authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(elements.authForm);
+  const path = authMode === "login" ? "/api/sessions" : "/api/users";
+  const credentials = Object.fromEntries(form.entries());
+
+  elements.authMessage.textContent = authMode === "login" ? "正在登录..." : "正在创建用户...";
+  elements.authMessage.className = "message";
+  elements.authSubmit.disabled = true;
+
+  try {
+    if (authMode === "signup") validateSignupPassword(String(credentials.password || ""));
+    const payload = await requestJson(path, {
+      method: "POST",
+      body: JSON.stringify(credentials)
+    });
+    elements.authMessage.textContent = authMode === "login"
+      ? `登录成功，欢迎 ${payload.user.username}。`
+      : `用户 ${payload.user.username} 创建成功，正在进入工作台。`;
+    elements.authMessage.className = "message success";
+    await delay(500);
+    setSession(payload.user, payload.tradingState);
+  } catch (error) {
+    elements.authMessage.textContent = error.message;
+    elements.authMessage.className = "message error";
+  } finally {
+    elements.authSubmit.disabled = false;
+  }
+});
+
+function validateSignupPassword(password) {
+  if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,20}$/.test(password)) {
+    throw new Error("密码需为 8-20 个字符，并包含至少一个大写字母、一个数字和一个特殊符号。");
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+elements.logoutButton.addEventListener("click", clearSession);
 elements.symbolSearch.addEventListener("input", renderInstruments);
 
-// 事件委托：列表里的行和按钮是动态生成的，所以把点击监听挂在 document 上。
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const symbolButton = event.target.closest("[data-symbol]");
   const cancelButton = event.target.closest("[data-cancel]");
 
@@ -253,24 +390,40 @@ document.addEventListener("click", (event) => {
     render();
   }
 
-  if (cancelButton) {
-    cancelOrder(state, cancelButton.dataset.cancel);
+  if (cancelButton && currentUser) {
+    const payload = await requestJson(`/api/orders/${encodeURIComponent(cancelButton.dataset.cancel)}/cancel`, {
+      method: "POST",
+      body: "{}"
+    });
+    state = payload.tradingState;
     render();
   }
 });
 
-elements.orderForm.addEventListener("submit", (event) => {
+elements.orderForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  // FormData 会读取表单里所有 name 字段，再交给 submitOrder 做业务校验和成交模拟。
+  if (!currentUser) return;
+
   const form = new FormData(elements.orderForm);
-  const result = submitOrder(state, Object.fromEntries(form.entries()));
-  elements.orderMessage.textContent = result.ok ? `${result.order.id} submitted: ${result.order.status}` : result.message;
-  elements.orderMessage.className = result.ok ? "message success" : "message error";
-  render();
+  try {
+    const payload = await requestJson("/api/orders", {
+      method: "POST",
+      body: JSON.stringify(Object.fromEntries(form.entries()))
+    });
+    state = payload.tradingState;
+    elements.orderMessage.textContent = payload.result.ok
+      ? `${payload.result.order.id} submitted: ${payload.result.order.status}`
+      : payload.result.message;
+    elements.orderMessage.className = payload.result.ok ? "message success" : "message error";
+    render();
+  } catch (error) {
+    elements.orderMessage.textContent = error.message;
+    elements.orderMessage.className = "message error";
+  }
 });
 
 elements.csvExport.addEventListener("click", () => {
-  // 浏览器端直接生成 CSV 下载，便于 demo 交易历史导出。
+  if (!state) return;
   const header = "id,symbol,side,quantity,status,thesis";
   const lines = state.orders.map((order) => [
     order.id,
@@ -284,9 +437,9 @@ elements.csvExport.addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "paper-trading-orders.csv";
+  link.download = `${currentUser.username}-paper-trading-orders.csv`;
   link.click();
   URL.revokeObjectURL(url);
 });
 
-render();
+bootstrapSession();
