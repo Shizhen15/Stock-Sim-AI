@@ -31,7 +31,7 @@ async function request(path, options = {}) {
 try {
   const aliceSignup = await request("/api/users", {
     method: "POST",
-    body: JSON.stringify({ username: "alice", password: "secret1" })
+    body: JSON.stringify({ username: "alice", password: "Secret1!" })
   });
   assert.equal(aliceSignup.status, 201);
   assert.equal(aliceSignup.body.user.username, "alice");
@@ -39,13 +39,19 @@ try {
 
   const bobSignup = await request("/api/users", {
     method: "POST",
-    body: JSON.stringify({ username: "bob", password: "secret2" })
+    body: JSON.stringify({ username: "bob", password: "Secret2!" })
   });
   assert.equal(bobSignup.status, 201);
 
+  const weakSignup = await request("/api/users", {
+    method: "POST",
+    body: JSON.stringify({ username: "charlie", password: "secret3" })
+  });
+  assert.equal(weakSignup.status, 400);
+
   const duplicateSignup = await request("/api/users", {
     method: "POST",
-    body: JSON.stringify({ username: "alice", password: "secret1" })
+    body: JSON.stringify({ username: "alice", password: "Secret1!" })
   });
   assert.equal(duplicateSignup.status, 409);
 
@@ -57,7 +63,7 @@ try {
 
   const aliceLogin = await request("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({ username: "alice", password: "secret1" })
+    body: JSON.stringify({ username: "alice", password: "Secret1!" })
   });
   assert.equal(aliceLogin.status, 200);
 

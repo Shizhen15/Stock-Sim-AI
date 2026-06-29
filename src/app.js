@@ -20,6 +20,8 @@ const elements = {
   authForm: document.querySelector("#authForm"),
   authSubmit: document.querySelector("#authSubmit"),
   authMessage: document.querySelector("#authMessage"),
+  passwordInput: document.querySelector("input[name='password']"),
+  passwordHint: document.querySelector("#passwordHint"),
   currentUser: document.querySelector("#currentUser"),
   logoutButton: document.querySelector("#logoutButton"),
   symbolSearch: document.querySelector("#symbolSearch"),
@@ -59,6 +61,22 @@ function renderAuthState() {
   elements.currentUser.textContent = currentUser ? `用户：${currentUser.username}` : "未登录";
   elements.loginTab.classList.toggle("active", authMode === "login");
   elements.signupTab.classList.toggle("active", authMode === "signup");
+  elements.loginTab.setAttribute("aria-selected", String(authMode === "login"));
+  elements.signupTab.setAttribute("aria-selected", String(authMode === "signup"));
+  if (authMode === "signup") {
+    elements.passwordInput.autocomplete = "new-password";
+    elements.passwordInput.setAttribute("minlength", "8");
+    elements.passwordInput.setAttribute("maxlength", "20");
+    elements.passwordInput.setAttribute("pattern", "^(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,20}$");
+    elements.passwordInput.title = "密码需为 8-20 个字符，并包含至少一个大写字母、一个数字和一个特殊符号。";
+  } else {
+    elements.passwordInput.autocomplete = "current-password";
+    elements.passwordInput.removeAttribute("minlength");
+    elements.passwordInput.removeAttribute("maxlength");
+    elements.passwordInput.removeAttribute("pattern");
+    elements.passwordInput.removeAttribute("title");
+  }
+  elements.passwordHint.hidden = authMode !== "signup";
   elements.authSubmit.textContent = authMode === "login" ? "登录用户" : "创建新用户";
 }
 
@@ -278,6 +296,10 @@ function setSession(user, tradingState) {
 function clearSession() {
   currentUser = null;
   state = null;
+  authMode = "login";
+  elements.authForm.reset();
+  elements.authMessage.textContent = "";
+  elements.authMessage.className = "message";
   localStorage.removeItem("stockSimUser");
   render();
 }
@@ -320,18 +342,41 @@ elements.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(elements.authForm);
   const path = authMode === "login" ? "/api/sessions" : "/api/users";
+  const credentials = Object.fromEntries(form.entries());
+
+  elements.authMessage.textContent = authMode === "login" ? "正在登录..." : "正在创建用户...";
+  elements.authMessage.className = "message";
+  elements.authSubmit.disabled = true;
 
   try {
+    if (authMode === "signup") validateSignupPassword(String(credentials.password || ""));
     const payload = await requestJson(path, {
       method: "POST",
-      body: JSON.stringify(Object.fromEntries(form.entries()))
+      body: JSON.stringify(credentials)
     });
+    elements.authMessage.textContent = authMode === "login"
+      ? `登录成功，欢迎 ${payload.user.username}。`
+      : `用户 ${payload.user.username} 创建成功，正在进入工作台。`;
+    elements.authMessage.className = "message success";
+    await delay(500);
     setSession(payload.user, payload.tradingState);
   } catch (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.className = "message error";
+  } finally {
+    elements.authSubmit.disabled = false;
   }
 });
+
+function validateSignupPassword(password) {
+  if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,20}$/.test(password)) {
+    throw new Error("密码需为 8-20 个字符，并包含至少一个大写字母、一个数字和一个特殊符号。");
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 elements.logoutButton.addEventListener("click", clearSession);
 elements.symbolSearch.addEventListener("input", renderInstruments);

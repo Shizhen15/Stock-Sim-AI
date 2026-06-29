@@ -25,8 +25,18 @@
           </label>
           <label>
             <span>Password</span>
-            <input name="password" type="password" autocomplete="current-password" minlength="6" required>
+            <input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              minlength="8"
+              maxlength="20"
+              required
+            >
           </label>
+          <p id="passwordHint" class="password-hint" hidden>
+            密码需为 8-20 个字符，并包含至少一个大写字母、一个数字和一个特殊符号。
+          </p>
           <button id="authSubmit" class="primary-action" type="submit">登录用户</button>
           <p id="authMessage" class="message" aria-live="polite"></p>
         </form>

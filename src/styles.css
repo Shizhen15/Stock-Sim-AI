@@ -120,6 +120,18 @@ button {
   color: var(--ink);
 }
 
+.password-hint {
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.primary-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .topbar {
   position: sticky;
   top: 0;

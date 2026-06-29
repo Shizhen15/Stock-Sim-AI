@@ -141,12 +141,13 @@ function createJsonDatabase(dbFile) {
     async createUser(usernameInput, passwordInput) {
       const username = normalizeUsername(usernameInput);
       const password = String(passwordInput || "");
-      if (!username || password.length < 6) {
+      const passwordError = validatePassword(password);
+      if (!username || passwordError) {
         return {
           ok: false,
           status: 400,
           error: "INVALID_SIGNUP",
-          message: "Username is required and password must be at least 6 characters."
+          message: !username ? "Username is required." : passwordError
         };
       }
 
@@ -247,6 +248,26 @@ function normalizeUsername(value) {
 
 function hashPassword(password) {
   return createHash("sha256").update(password).digest("hex");
+}
+
+function validatePassword(password) {
+  if (password.length < 8 || password.length > 20) {
+    return "Password must be 8-20 characters.";
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one uppercase letter.";
+  }
+
+  if (!/\d/.test(password)) {
+    return "Password must include at least one number.";
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one special character.";
+  }
+
+  return "";
 }
 
 function publicUser(user) {
