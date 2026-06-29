@@ -25,14 +25,15 @@ TIMEFRAMES = {
 def main() -> int:
     symbol = normalize_symbol(sys.argv[1] if len(sys.argv) > 1 else "")
     timeframe = sys.argv[2] if len(sys.argv) > 2 else "1D"
+    include_extended = (sys.argv[3] if len(sys.argv) > 3 else "").lower() in {"1", "true", "yes", "prepost"}
     if not symbol:
         emit(False, message="Symbol is required.")
         return 0
 
     options = TIMEFRAMES.get(timeframe, TIMEFRAMES["1D"])
-    payload = fetch_with_yfinance(symbol, timeframe, options)
+    payload = fetch_with_yfinance(symbol, timeframe, options, include_extended)
     if not payload or not payload.get("ok"):
-        payload = fetch_with_chart_api(symbol, timeframe, options)
+        payload = fetch_with_chart_api(symbol, timeframe, options, include_extended)
     print(json.dumps(payload, separators=(",", ":")))
     return 0
 
@@ -41,14 +42,19 @@ def normalize_symbol(value: str) -> str:
     return "".join(ch for ch in value.strip().upper() if ch.isalnum() or ch in ".-")
 
 
-def fetch_with_yfinance(symbol: str, timeframe: str, options: dict[str, str]) -> dict | None:
+def fetch_with_yfinance(symbol: str, timeframe: str, options: dict[str, str], include_extended: bool) -> dict | None:
     try:
         import yfinance as yf  # type: ignore
     except Exception:
         return None
 
     try:
-        frame = yf.Ticker(symbol).history(period=options["period"], interval=options["interval"], auto_adjust=False)
+        frame = yf.Ticker(symbol).history(
+            period=options["period"],
+            interval=options["interval"],
+            auto_adjust=False,
+            prepost=include_extended,
+        )
         bars = []
         for timestamp, row in frame.tail(500).iterrows():
             close = row.get("Close")
@@ -69,7 +75,8 @@ def fetch_with_yfinance(symbol: str, timeframe: str, options: dict[str, str]) ->
             "ok": True,
             "symbol": symbol,
             "timeframe": timeframe,
-            "source": "yfinance",
+            "includeExtendedHours": include_extended,
+            "source": "yfinance extended hours" if include_extended else "yfinance",
             "lastUpdated": now_iso(),
             "bars": bars,
         }
@@ -77,8 +84,12 @@ def fetch_with_yfinance(symbol: str, timeframe: str, options: dict[str, str]) ->
         return {"ok": False, "message": f"yfinance failed: {error}"}
 
 
-def fetch_with_chart_api(symbol: str, timeframe: str, options: dict[str, str]) -> dict:
-    query = urllib.parse.urlencode({"range": options["period"], "interval": options["interval"]})
+def fetch_with_chart_api(symbol: str, timeframe: str, options: dict[str, str], include_extended: bool) -> dict:
+    query = urllib.parse.urlencode({
+        "range": options["period"],
+        "interval": options["interval"],
+        "includePrePost": "true" if include_extended else "false",
+    })
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{query}"
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "stock-sim-ai-local/0.1"})
@@ -110,7 +121,8 @@ def fetch_with_chart_api(symbol: str, timeframe: str, options: dict[str, str]) -
             "ok": True,
             "symbol": symbol,
             "timeframe": timeframe,
-            "source": "Yahoo Finance chart API",
+            "includeExtendedHours": include_extended,
+            "source": "Yahoo Finance chart API extended hours" if include_extended else "Yahoo Finance chart API",
             "lastUpdated": now_iso(),
             "bars": bars,
         }

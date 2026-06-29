@@ -10,6 +10,7 @@ let selectedSymbol = "AAPL";
 let authMode = "login";
 let currentUser = null;
 let selectedTimeframe = "1D";
+let includeExtendedHours = false;
 let marketBars = [];
 let marketSource = null;
 let chartRequestId = 0;
@@ -121,48 +122,34 @@ function renderWatchlists() {
 function renderChart() {
   const instrument = getInstrument(selectedSymbol);
   const bars = marketBars.length ? marketBars : buildFallbackBars(instrument);
-  const closes = bars.map((bar) => bar.close);
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
-  const points = bars
-    .map((bar, index) => {
-      const x = (index / (bars.length - 1)) * 100;
-      const y = 94 - ((bar.close - min) / (max - min || 1)) * 82;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
   elements.chart.innerHTML = `
     <div class="chart-head">
       <div>
-        <strong>${selectedSymbol} price chart</strong>
+        <strong>${selectedSymbol} price history</strong>
         <span>${selectedTimeframe} view · ${marketSource?.source || instrument.source}</span>
       </div>
-      <div class="timeframe-tabs" role="tablist" aria-label="Chart timeframe">
-        ${["15m", "1H", "1D"].map((timeframe) => `
-          <button type="button" class="${timeframe === selectedTimeframe ? "active" : ""}" data-timeframe="${timeframe}">${timeframe}</button>
-        `).join("")}
+      <div class="chart-controls">
+        <div class="timeframe-tabs" role="tablist" aria-label="Chart timeframe">
+          ${["15m", "1H", "1D"].map((timeframe) => `
+            <button type="button" class="${timeframe === selectedTimeframe ? "active" : ""}" data-timeframe="${timeframe}">${timeframe}</button>
+          `).join("")}
+        </div>
+        <button type="button" class="extended-toggle ${includeExtendedHours ? "active" : ""}" data-extended-hours>
+          Post-market
+        </button>
       </div>
     </div>
     <div id="tradingViewChart" class="chart-canvas"></div>
-    <svg class="fallback-chart" viewBox="0 0 100 100" role="img" aria-label="${selectedSymbol} chart">
-      <defs>
-        <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#1f8f70" stop-opacity="0.24"></stop>
-          <stop offset="100%" stop-color="#1f8f70" stop-opacity="0"></stop>
-        </linearGradient>
-      </defs>
-      <polyline class="grid" points="0,20 100,20"></polyline>
-      <polyline class="grid" points="0,50 100,50"></polyline>
-      <polyline class="grid" points="0,80 100,80"></polyline>
-      <polygon class="area" points="0,100 ${points} 100,100"></polygon>
-      <polyline class="line" points="${points}"></polyline>
-    </svg>
-    <p class="data-note">${marketSource?.source || instrument.source}. Last updated ${formatMarketTime(marketSource?.lastUpdated || instrument.updatedAt)}.</p>
+    <canvas id="priceHistoryCanvas" class="fallback-chart" width="900" height="250" aria-label="${selectedSymbol} price history chart"></canvas>
+    <p class="data-note">${marketSource?.source || instrument.source}. ${includeExtendedHours ? "Post-market data included when available. " : ""}Last updated ${formatMarketTime(marketSource?.lastUpdated || instrument.updatedAt)}.</p>
   `;
 
   renderTradingViewChart(bars);
-  if (marketSource?.symbol !== selectedSymbol || marketSource?.timeframe !== selectedTimeframe) {
+  if (
+    marketSource?.symbol !== selectedSymbol ||
+    marketSource?.timeframe !== selectedTimeframe ||
+    Boolean(marketSource?.includeExtendedHours) !== includeExtendedHours
+  ) {
     void loadBars(selectedSymbol, selectedTimeframe);
   }
 }
@@ -318,7 +305,12 @@ async function refreshQuote(symbol) {
 async function loadBars(symbol, timeframe) {
   const requestId = ++chartRequestId;
   try {
-    const payload = await requestJson(`/api/market-data/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
+    const params = new URLSearchParams({
+      symbol,
+      timeframe,
+      extendedHours: includeExtendedHours ? "1" : "0"
+    });
+    const payload = await requestJson(`/api/market-data/bars?${params.toString()}`);
     if (requestId !== chartRequestId || symbol !== selectedSymbol || timeframe !== selectedTimeframe) return;
     marketBars = payload.bars;
     marketSource = payload;
@@ -348,8 +340,9 @@ function buildFallbackBars(instrument) {
     189, 194, 191, 198, 203, 201, 207, 211, 209, 214, 218, 215,
     221, 224, 219, 226, 232, 228, 235, 241, 238, 244, 249, 246
   ];
+  const now = Date.now();
   return prices.map((value, index) => ({
-    time: String(index),
+    time: new Date(now - (prices.length - 1 - index) * 24 * 60 * 60 * 1000).toISOString(),
     open: value,
     high: value * 1.006,
     low: value * 0.994,
@@ -357,46 +350,121 @@ function buildFallbackBars(instrument) {
   }));
 }
 
+function drawCanvasChart(bars) {
+  const canvas = document.querySelector("#priceHistoryCanvas");
+  if (!canvas) return;
+
+  const cssWidth = canvas.clientWidth || 900;
+  const cssHeight = canvas.clientHeight || 250;
+  const pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(cssWidth * pixelRatio);
+  canvas.height = Math.floor(cssHeight * pixelRatio);
+
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, cssWidth, cssHeight);
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, cssWidth, cssHeight);
+
+  const visibleBars = bars.slice(-90);
+  const highs = visibleBars.map((bar) => bar.high);
+  const lows = visibleBars.map((bar) => bar.low);
+  const min = Math.min(...lows);
+  const max = Math.max(...highs);
+  const range = max - min || 1;
+  const padding = { top: 14, right: 42, bottom: 22, left: 12 };
+  const plotWidth = cssWidth - padding.left - padding.right;
+  const plotHeight = cssHeight - padding.top - padding.bottom;
+  const yFor = (price) => padding.top + (max - price) / range * plotHeight;
+
+  context.strokeStyle = "#dfe7e3";
+  context.lineWidth = 1;
+  for (const ratio of [0.2, 0.5, 0.8]) {
+    const y = padding.top + ratio * plotHeight;
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(cssWidth - padding.right, y);
+    context.stroke();
+  }
+
+  const step = plotWidth / Math.max(1, visibleBars.length - 1);
+  const candleWidth = Math.max(3, Math.min(9, step * 0.62));
+  visibleBars.forEach((bar, index) => {
+    const x = padding.left + index * step;
+    const openY = yFor(bar.open);
+    const closeY = yFor(bar.close);
+    const highY = yFor(bar.high);
+    const lowY = yFor(bar.low);
+    const up = bar.close >= bar.open;
+    context.strokeStyle = up ? "#1f8f70" : "#b73b4b";
+    context.fillStyle = context.strokeStyle;
+    context.beginPath();
+    context.moveTo(x, highY);
+    context.lineTo(x, lowY);
+    context.stroke();
+    context.fillRect(x - candleWidth / 2, Math.min(openY, closeY), candleWidth, Math.max(1, Math.abs(closeY - openY)));
+  });
+
+  context.fillStyle = "#64706b";
+  context.font = "12px Inter, system-ui, sans-serif";
+  context.textAlign = "right";
+  context.fillText(max.toFixed(2), cssWidth - 4, padding.top + 4);
+  context.fillText(min.toFixed(2), cssWidth - 4, cssHeight - padding.bottom);
+}
+
 function renderTradingViewChart(bars) {
   const container = document.querySelector("#tradingViewChart");
-  const fallback = elements.chart.querySelector(".fallback-chart");
+  const fallback = elements.chart.querySelector("#priceHistoryCanvas");
   if (!container || !window.LightweightCharts?.createChart) {
-    if (fallback) fallback.hidden = false;
+    if (fallback) {
+      fallback.hidden = false;
+      drawCanvasChart(bars);
+    }
     return;
   }
 
-  fallback.hidden = true;
-  const chart = window.LightweightCharts.createChart(container, {
-    height: 250,
-    layout: {
-      background: { color: "#ffffff" },
-      textColor: "#64706b"
-    },
-    grid: {
-      vertLines: { color: "#eef3f0" },
-      horzLines: { color: "#eef3f0" }
-    },
-    rightPriceScale: { borderColor: "#dce3df" },
-    timeScale: {
-      borderColor: "#dce3df",
-      timeVisible: selectedTimeframe !== "1D"
+  try {
+    fallback.hidden = true;
+    const chart = window.LightweightCharts.createChart(container, {
+      height: 250,
+      layout: {
+        background: { color: "#ffffff" },
+        textColor: "#64706b"
+      },
+      grid: {
+        vertLines: { color: "#eef3f0" },
+        horzLines: { color: "#eef3f0" }
+      },
+      rightPriceScale: { borderColor: "#dce3df" },
+      timeScale: {
+        borderColor: "#dce3df",
+        timeVisible: selectedTimeframe !== "1D"
+      }
+    });
+    const series = chart.addCandlestickSeries({
+      upColor: "#1f8f70",
+      downColor: "#b73b4b",
+      borderVisible: false,
+      wickUpColor: "#1f8f70",
+      wickDownColor: "#b73b4b"
+    });
+    series.setData(bars.map((bar) => ({
+      time: toChartTime(bar.time),
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close
+    })));
+    chart.timeScale().fitContent();
+  } catch {
+    container.innerHTML = "";
+    if (fallback) {
+      fallback.hidden = false;
+      drawCanvasChart(bars);
     }
-  });
-  const series = chart.addCandlestickSeries({
-    upColor: "#1f8f70",
-    downColor: "#b73b4b",
-    borderVisible: false,
-    wickUpColor: "#1f8f70",
-    wickDownColor: "#b73b4b"
-  });
-  series.setData(bars.map((bar) => ({
-    time: toChartTime(bar.time),
-    open: bar.open,
-    high: bar.high,
-    low: bar.low,
-    close: bar.close
-  })));
-  chart.timeScale().fitContent();
+  }
 }
 
 function toChartTime(value) {
@@ -510,6 +578,7 @@ document.addEventListener("click", async (event) => {
   const symbolButton = event.target.closest("[data-symbol]");
   const cancelButton = event.target.closest("[data-cancel]");
   const timeframeButton = event.target.closest("[data-timeframe]");
+  const extendedHoursButton = event.target.closest("[data-extended-hours]");
 
   if (symbolButton) {
     selectedSymbol = symbolButton.dataset.symbol;
@@ -521,6 +590,13 @@ document.addEventListener("click", async (event) => {
 
   if (timeframeButton) {
     selectedTimeframe = timeframeButton.dataset.timeframe;
+    marketBars = [];
+    marketSource = null;
+    renderChart();
+  }
+
+  if (extendedHoursButton) {
+    includeExtendedHours = !includeExtendedHours;
     marketBars = [];
     marketSource = null;
     renderChart();

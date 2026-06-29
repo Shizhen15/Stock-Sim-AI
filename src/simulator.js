@@ -59,6 +59,102 @@ export const instruments = [
     pe: 34.9,
     source: "Demo delayed quote",
     updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "AMZN",
+    name: "Amazon.com Inc.",
+    sector: "Consumer Discretionary",
+    price: 223.28,
+    changePct: 0.56,
+    volume: "38.6M",
+    marketCap: "2.36T",
+    pe: 36.7,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "GOOGL",
+    name: "Alphabet Inc.",
+    sector: "Communication Services",
+    price: 176.77,
+    changePct: 0.41,
+    volume: "24.2M",
+    marketCap: "2.15T",
+    pe: 22.8,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "META",
+    name: "Meta Platforms Inc.",
+    sector: "Communication Services",
+    price: 702.12,
+    changePct: 1.06,
+    volume: "14.1M",
+    marketCap: "1.77T",
+    pe: 27.5,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "AMD",
+    name: "Advanced Micro Devices Inc.",
+    sector: "Semiconductors",
+    price: 126.31,
+    changePct: -0.38,
+    volume: "42.7M",
+    marketCap: "204.7B",
+    pe: 38.9,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "AVGO",
+    name: "Broadcom Inc.",
+    sector: "Semiconductors",
+    price: 265.48,
+    changePct: 0.93,
+    volume: "31.9M",
+    marketCap: "1.24T",
+    pe: 42.3,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "NFLX",
+    name: "Netflix Inc.",
+    sector: "Communication Services",
+    price: 1220.18,
+    changePct: 0.67,
+    volume: "3.1M",
+    marketCap: "520.4B",
+    pe: 48.6,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "ORCL",
+    name: "Oracle Corp.",
+    sector: "Technology",
+    price: 214.78,
+    changePct: 1.24,
+    volume: "18.3M",
+    marketCap: "601.2B",
+    pe: 32.4,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
+  },
+  {
+    symbol: "PLTR",
+    name: "Palantir Technologies Inc.",
+    sector: "Technology",
+    price: 142.37,
+    changePct: 2.18,
+    volume: "62.5M",
+    marketCap: "325.6B",
+    pe: 91.4,
+    source: "Demo delayed quote",
+    updatedAt: "2026-06-16 09:45 ET"
   }
 ];
 
@@ -82,8 +178,9 @@ export function createInitialState() {
       SPY: { symbol: "SPY", qty: 20, avgCost: 588.4, realizedPnl: 0 }
     },
     watchlists: {
-      Core: ["AAPL", "NVDA", "SPY"],
-      Momentum: ["NVDA", "TSLA", "MSFT"]
+      Core: ["AAPL", "NVDA", "SPY", "MSFT"],
+      Momentum: ["NVDA", "TSLA", "MSFT", "AMD", "PLTR"],
+      "Mega-cap AI": ["AMZN", "GOOGL", "META", "AVGO", "ORCL"]
     },
     alerts: [
       { symbol: "NVDA", condition: "Price above 150.00", status: "Active" },

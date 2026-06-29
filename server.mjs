@@ -8,7 +8,7 @@ import {
 } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, extname, join, normalize } from "node:path";
+import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   cancelOrder,
@@ -124,7 +124,8 @@ async function handleApi(request, response, url, database, sessionTtlMs) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/market-data/bars") {
-    const result = await getHistoricalBars(url.searchParams.get("symbol"), url.searchParams.get("timeframe"));
+    const includeExtendedHours = ["1", "true", "yes"].includes(String(url.searchParams.get("extendedHours") || "").toLowerCase());
+    const result = await getHistoricalBars(url.searchParams.get("symbol"), url.searchParams.get("timeframe"), includeExtendedHours);
     if (!result.ok) {
       sendJson(response, result.status, { error: result.error, message: result.message });
       return;
@@ -481,7 +482,7 @@ function sendJson(response, status, payload, headers = {}) {
   response.end(JSON.stringify(payload));
 }
 
-const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 
 if (isDirectRun) {
   createStockSimServer().listen(defaultPort, () => {

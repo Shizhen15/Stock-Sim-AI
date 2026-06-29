@@ -34,12 +34,18 @@ try {
   const instruments = await request("/api/market-data/instruments");
   assert.equal(instruments.status, 200);
   assert.ok(instruments.body.instruments.some((item) => item.symbol === "AAPL"));
+  assert.ok(instruments.body.instruments.some((item) => item.symbol === "META"));
+  assert.ok(instruments.body.instruments.some((item) => item.symbol === "PLTR"));
 
   const firstQuote = await request("/api/market-data/quote?symbol=AAPL");
   assert.equal(firstQuote.status, 200);
   assert.equal(firstQuote.body.quote.symbol, "AAPL");
   assert.equal(firstQuote.body.quote.provider, "demo");
   assert.equal(firstQuote.body.alpacaLimiter.configuredLimitPerMinute, 2);
+
+  const metaQuote = await request("/api/market-data/quote?symbol=META");
+  assert.equal(metaQuote.status, 200);
+  assert.equal(metaQuote.body.quote.symbol, "META");
 
   const secondQuote = await request("/api/market-data/quote?symbol=AAPL");
   assert.equal(secondQuote.status, 200);
@@ -49,8 +55,16 @@ try {
   assert.equal(bars.status, 200);
   assert.equal(bars.body.symbol, "AAPL");
   assert.equal(bars.body.timeframe, "1D");
+  assert.equal(bars.body.includeExtendedHours, false);
   assert.ok(bars.body.bars.length >= 20);
   assert.ok(Number.isFinite(bars.body.bars.at(-1).close));
+
+  const extendedBars = await request("/api/market-data/bars?symbol=AAPL&timeframe=15m&extendedHours=1");
+  assert.equal(extendedBars.status, 200);
+  assert.equal(extendedBars.body.symbol, "AAPL");
+  assert.equal(extendedBars.body.timeframe, "15m");
+  assert.equal(extendedBars.body.includeExtendedHours, true);
+  assert.ok(extendedBars.body.bars.length >= 20);
 
   const unknown = await request("/api/market-data/quote?symbol=NOPE");
   assert.equal(unknown.status, 404);

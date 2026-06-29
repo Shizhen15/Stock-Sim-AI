@@ -42,7 +42,7 @@ export async function getLatestQuote(symbolInput) {
   return { ok: true, quote: alpacaQuote };
 }
 
-export async function getHistoricalBars(symbolInput, timeframeInput = "1D") {
+export async function getHistoricalBars(symbolInput, timeframeInput = "1D", includeExtendedHours = false) {
   const symbol = normalizeSymbol(symbolInput);
   const timeframe = normalizeTimeframe(timeframeInput);
   const instrument = demoInstruments.find((item) => item.symbol === symbol);
@@ -50,12 +50,13 @@ export async function getHistoricalBars(symbolInput, timeframeInput = "1D") {
     return { ok: false, status: 404, error: "UNKNOWN_SYMBOL", message: "Unknown or unsupported US stock / ETF symbol." };
   }
 
-  const scraped = await scrapeYfinanceBars(symbol, timeframe);
+  const scraped = await scrapeYfinanceBars(symbol, timeframe, includeExtendedHours);
   if (scraped.ok && scraped.bars.length) {
     return {
       ok: true,
       symbol,
       timeframe,
+      includeExtendedHours,
       source: scraped.source,
       isRealtime: false,
       lastUpdated: scraped.lastUpdated,
@@ -68,6 +69,7 @@ export async function getHistoricalBars(symbolInput, timeframeInput = "1D") {
     ok: true,
     symbol,
     timeframe,
+    includeExtendedHours,
     source: "Demo historical fallback",
     isRealtime: false,
     warning: scraped.message || "Historical scraper unavailable; using generated demo bars.",
@@ -179,9 +181,9 @@ function normalizeTimeframe(value) {
   return ["1D", "1H", "15m"].includes(value) ? value : "1D";
 }
 
-function scrapeYfinanceBars(symbol, timeframe) {
+function scrapeYfinanceBars(symbol, timeframe, includeExtendedHours) {
   return new Promise((resolve) => {
-    execFile("python", [historyScript, symbol, timeframe], { timeout: historyTimeoutMs }, (error, stdout) => {
+    execFile("python", [historyScript, symbol, timeframe, includeExtendedHours ? "1" : "0"], { timeout: historyTimeoutMs }, (error, stdout) => {
       if (error) {
         resolve({ ok: false, message: error.message });
         return;
